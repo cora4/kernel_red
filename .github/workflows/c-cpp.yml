@@ -1,0 +1,45 @@
+name: Build ARM64 Linux Kernel (LLVM)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build Dependencies
+      id: build_depends
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          ccache lld clang llvm
+    - name: Show nproc
+      run: nproc; cat /proc/cpuinfo
+    - name: Configure kernel
+      run: mkdir ~/.ccache
+    - name: Cache ccache
+      uses: actions/cache@v3
+      with:
+        path: ~/.ccache
+        key: ${{ runner.os }}-ccache-${{ hashFiles('**/*.c', '**/*.cpp', '**/*.h') }}
+        restore-keys: |
+          ${{ runner.os }}-ccache-
+    - name: Configure kernel
+      run: ARCH=arm64 KBUILD_OUTPUT=build make "CC=ccache clang" LLVM=1 LLVM_IAS=1 gki_defconfig
+    - name: Build kernel
+      id: gmake_build
+      run: ARCH=arm64 KBUILD_OUTPUT=build make "CC=ccache clang" LLVM=1 LLVM_IAS=1 -j$(nproc)
+    - name: Show ccache stats
+      run: ccache -s
+    - name: Upload Build Artifact
+      if: ${{ always() && steps.gmake_build.outcome == 'success' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: gki-kernel
+        path: build/arch/arm64/boot/
